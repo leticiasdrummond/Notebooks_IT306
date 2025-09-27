@@ -1,0 +1,301 @@
+Claro! Vou apresentar um resumo dos modelos matemáticos e físicos utilizados para a estimativa da **irradiância no plano dos módulos (POA – Plane of Array)**, conforme implementado no [pvlib-python](https://github.com/pvlib/pvlib-python). Também explicarei como os dados atmosféricos podem ser gerados, mostrarei a curva de otimização de ganho de transposição ao variar o ângulo de inclinação, e descreverei brevemente o modelo físico do **Modificador do Ângulo de Incidência (IAM)**.
+
+---
+
+## 1. Modelo para Cálculo da POA
+
+**Irradiância no Plano dos Módulos (POA)** é a soma das componentes direta, difusa e refletida da irradiância solar incidente sobre um plano inclinado (os módulos fotovoltaicos).
+
+### Principais Componentes:
+
+- **Direta normal (DNI):** Irradiância proveniente diretamente do sol (sem espalhamento).
+- **Difusa do céu (DHI):** Irradiância espalhada pela atmosfera.
+- **Refletida pelo solo (albedo):** Irradiância refletida pelo solo/superfície adjacente.
+
+#### Modelo Matemático
+
+A irradiância POA (\( E_{\text{POA}} \)) é dada por:
+
+\[
+E_{\text{POA}} = E_{\text{dir,POA}} + E_{\text{dif,POA}} + E_{\text{ref,POA}}
+\]
+
+- \( E_{\text{dir,POA}} \): componente direta transposta para o plano dos módulos.
+- \( E_{\text{dif,POA}} \): componente difusa transposta.
+- \( E_{\text{ref,POA}} \): componente refletida.
+
+##### Cálculo da Componente Direta:
+
+\[
+E_{\text{dir,POA}} = DNI \cdot \cos(\theta)
+\]
+
+- \( DNI \): irradiância direta normal.
+- \( \theta \): ângulo de incidência entre os raios solares e o plano do módulo.
+
+##### Cálculo da Componente Difusa:
+
+pvlib permite usar diferentes modelos para a difusa, como *Hay-Davies*, *Isotropic*, *Perez*.
+
+Exemplo para o modelo isotrópico:
+
+\[
+E_{\text{dif,POA}} = DHI \cdot \frac{1 + \cos(\beta)}{2}
+\]
+
+- \( DHI \): irradiância difusa horizontal.
+- \( \beta \): ângulo de inclinação do módulo.
+
+##### Cálculo da Componente Refletida:
+
+\[
+E_{\text{ref,POA}} = GHI \cdot \rho \cdot \frac{1 - \cos(\beta)}{2}
+\]
+
+- \( GHI \): irradiância global horizontal.
+- \( \rho \): albedo do solo.
+
+---
+
+## 2. Geração de Dados Atmosféricos
+
+Para estimar a POA, é necessário obter dados atmosféricos (GHI, DHI, DNI). O pvlib oferece modelos padrão para estimativa desses dados:
+
+- **Modelo de decompisição de irradiância:** Converte GHI em DHI e DNI usando modelos como *Erbs*, *DISC*, *DIRINT*.
+- **Modelos meteorológicos:** pvlib pode consumir dados de fontes como TMY, Solcast, NSRDB, ou gerar dados sintéticos.
+
+Exemplo de uso no pvlib:
+
+```python
+import pvlib
+# Supondo que você tenha GHI e precise de DNI/DHI
+dni, dhi = pvlib.irradiance.erbs(ghi, solar_zenith, times)
+```
+
+---
+
+## 3. Curva de Otimização de Ganho de Transposição vs Ângulo de Inclinação
+
+O **ganho de transposição** refere-se ao aumento da irradiância recebida ao inclinar o módulo em relação ao plano horizontal.
+
+### Como obter a curva:
+
+1. Para vários valores do ângulo de inclinação (\( \beta \)), calcula-se o POA.
+2. O ganho é dado por:
+
+\[
+\text{Ganho de Transposição} = \frac{E_{\text{POA}}(\beta)}{GHI}
+\]
+
+3. Plotar o ganho em função de \( \beta \) mostra a curva de otimização.
+
+Exemplo de trecho de código:
+
+```python
+import numpy as np
+betas = np.linspace(0, 60, 13)  # Ângulo de inclinação de 0 a 60°
+ganhos = []
+for beta in betas:
+    poa = pvlib.irradiance.get_total_irradiance(
+        surface_tilt=beta,
+        surface_azimuth=180,
+        solar_zenith=solar_zenith,
+        solar_azimuth=solar_azimuth,
+        dni=dni,
+        ghi=ghi,
+        dhi=dhi,
+        albedo=0.2
+    )
+    ganhos.append(poa['poa_global'].mean() / ghi.mean())
+# Plotar ganhos vs betas
+```
+
+---
+
+## 4. Modificador do Ângulo de Incidência (IAM)
+
+O **Modificador do Ângulo de Incidência (IAM)** ajusta a irradiância direta para perdas ópticas causadas pelo ângulo entre os raios solares e o plano do módulo.
+
+### Modelo físico adotado (pvlib):
+
+O modelo mais comum é o **IAM de ASHRAE**, que representa as perdas por reflexão:
+
+\[
+IAM(\theta) = 1 - k \left( \frac{1}{\cos(\theta)} - 1 \right)
+\]
+
+- \( \theta \): ângulo de incidência.
+- \( k \): parâmetro de perda óptica (tipicamente entre 0.02 e 0.04).
+
+No pvlib:
+
+```python
+iam = pvlib.iam.ashrae(surface_tilt, surface_azimuth, solar_zenith, solar_azimuth, k=0.04)
+```
+
+Esse valor é multiplicado pela irradiância direta para obter o valor corrigido.
+
+---
+
+## Resumo
+
+- **POA** é calculada somando as componentes direta, difusa e refletida, transpostas para o plano dos módulos.
+- Os dados atmosféricos podem ser gerados com modelos padrão do pvlib.
+- A curva de otimização do ganho de transposição mostra o ganho ao variar o ângulo de inclinação.
+- O modelo físico do IAM, como o de ASHRAE, ajusta a irradiância direta para perdas ópticas devido ao ângulo de incidência.
+
+ # ----------------------------------------------
+# Continuação do Projeto IT306 - MODELO DRUMMOND
+# Pós 1.1 - Modelagem Fotovoltaica, Simulação e Comparação
+# ----------------------------------------------
+# Este bloco assume que o DataFrame 'tmy_pvgis' ou 'data_nsrdb_tmy' já está carregado e contém
+# as colunas: ghi, dni, dhi, temp_air, wind_speed
+# ----------------------------------------------
+
+import pvlib
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from pvlib.location import Location
+from pvlib.pvsystem import retrieve_sam, PVSystem
+from pvlib.temperature import sapm_cell, pvsyst_cell, noct_sam, TEMPERATURE_MODEL_PARAMETERS
+from pvlib.irradiance import get_total_irradiance
+from pvlib.inverter import sandia
+from pvlib.pvsystem import pvwatts_losses
+from sklearn.metrics import mean_squared_error, mean_absolute_error
+
+# ----------- Parâmetros do Sistema (preencha conforme seu projeto) -----------
+latitude = -12.9714
+longitude = -38.5014
+altitude = 28
+tz = 'America/Sao_Paulo'
+site = Location(latitude, longitude, tz=tz, altitude=altitude, name='Salvador')
+
+# Usar DataFrame do passo anterior (exemplo: tmy_pvgis)
+data = tmy_pvgis  # ou data_nsrdb_tmy
+
+# ----------- Seleção dos Componentes (módulo/inversor) -----------
+modules = retrieve_sam('CECMod')
+inverters = retrieve_sam('CECInverter')
+
+mod = modules.loc['Canadian_Solar_Inc__CS1K_300MS']  # Troque pelo seu modelo
+inv = inverters.loc['Princeton_Power_Systems__GTIB_480_100X_YYYYYYYY_Z_G1_2__480V_']  # Troque pelo seu modelo
+
+n_modulos = 400
+strings = 20
+modulos_por_string = 20
+tilt = 15
+azimuth = 0  # Norte
+
+# ----------- Solar Position -----------
+solpos = site.get_solarposition(data.index)
+
+# ----------- Irradiância POA (Hay-Davies) -----------
+poa = get_total_irradiance(
+    surface_tilt=tilt,
+    surface_azimuth=azimuth,
+    solar_zenith=solpos['apparent_zenith'],
+    solar_azimuth=solpos['azimuth'],
+    dni=data['dni'],
+    ghi=data['ghi'],
+    dhi=data['dhi'],
+    model='haydavies'
+)
+
+plt.figure(figsize=(10,4))
+plt.plot(poa['poa_global'][:48])
+plt.title('Irradiância POA nos primeiros 2 dias')
+plt.xlabel('Hora')
+plt.ylabel('POA [W/m²]')
+plt.show()
+
+# ----------- Temperatura do Módulo FV -----------
+temp_sapm = sapm_cell(poa['poa_global'], data['temp_air'], data['wind_speed'], TEMPERATURE_MODEL_PARAMETERS['sapm']['open_rack_glass_glass'])
+temp_noct = noct_sam(poa['poa_global'], data['temp_air'], data['wind_speed'], TEMPERATURE_MODEL_PARAMETERS['noct_sam']['glass_glass'])
+temp_pvsyst = pvsyst_cell(poa['poa_global'], data['temp_air'], data['wind_speed'])
+
+plt.figure(figsize=(10,5))
+plt.plot(temp_sapm[:24], label='SAPM')
+plt.plot(temp_noct[:24], label='NOCT')
+plt.plot(temp_pvsyst[:24], label='PVsyst')
+plt.title('Modelos de Temperatura do Módulo - 1 dia')
+plt.ylabel('Temperatura [°C]')
+plt.legend()
+plt.show()
+
+# ----------- Modelagem DC (Single Diode) -----------
+system = PVSystem(
+    surface_tilt=tilt,
+    surface_azimuth=azimuth,
+    module_parameters=mod,
+    inverter_parameters=inv,
+    modules_per_string=modulos_por_string,
+    strings=strings
+)
+
+dc = system.get_dc(poa['poa_global'], temp_sapm, irradiance_method='sapm', temperature_model_parameters=TEMPERATURE_MODEL_PARAMETERS['cec']['open_rack_glass_glass'])
+
+# ----------- Modelagem AC (Sandia Inverter) -----------
+ac = sandia(dc['v_mp'], dc['p_mp'], inv)
+
+# ----------- Visualização DC x AC -----------
+plt.figure(figsize=(10,4))
+plt.plot(dc['p_mp'][:48], label='DC')
+plt.plot(ac[:48], label='AC')
+plt.title('Geração DC vs AC (2 dias)')
+plt.xlabel('Hora')
+plt.ylabel('Potência [W]')
+plt.legend()
+plt.show()
+
+# ----------- Perda por Clipping -----------
+clipping = dc['p_mp'] > inv['Pac_max']
+clipping_loss = np.sum(dc['p_mp'][clipping] - inv['Pac_max']) / np.sum(dc['p_mp']) * 100
+print('Perda anual por clipping (%):', clipping_loss)
+
+# ----------- Resultados Mensais e Anuais -----------
+ac_monthly = pd.Series(ac, index=data.index).resample('M').sum()/1e3 # kWh
+ac_annual = ac_monthly.sum() # kWh
+
+print('Geração mensal AC (kWh):')
+print(ac_monthly)
+print('Geração anual AC (kWh):', ac_annual)
+
+# ----------- Indicadores de Desempenho -----------
+irradiacao_total = poa['poa_global'].sum()/1000 # kWh/m2
+PR = ac_annual/(irradiacao_total*n_modulos*mod['A_c'])
+Y = ac_annual/(n_modulos*mod['P_mp_ref'])
+FC = ac_annual/(inv['Pac_max']*8760/1000)
+print('Performance Ratio (PR):', PR)
+print('Yield:', Y)
+print('Fator de Capacidade (FC):', FC)
+
+# ----------- Comparação com PVsyst -----------
+# Troque os valores abaixo pelos dados simulados pelo professor
+ref_pvsyst_mensal = [12000, 11500, 13000, 14000, 13500, 12500, 12700, 12900, 13400, 14000, 14200, 13800]
+sim_mensal = ac_monthly.values[:12]
+rmse = np.sqrt(mean_squared_error(ref_pvsyst_mensal, sim_mensal))
+mae = mean_absolute_error(ref_pvsyst_mensal, sim_mensal)
+mbe = np.mean(sim_mensal - ref_pvsyst_mensal)
+print(f'Comparação com PVsyst - RMSE: {rmse:.2f} | MAE: {mae:.2f} | MBE: {mbe:.2f}')
+
+# ----------- Simulação de Baterias (sistema híbrido) -----------
+energia_carga_dia = 5000*5/1000 # kWh/dia
+eficiencia_bat = 0.93 # exemplo LFP comercial
+dias = 365
+energia_necessaria_bateria = energia_carga_dia / eficiencia_bat
+energia_total_bateria_ano = energia_necessaria_bateria * dias
+energia_sobra = ac_annual - energia_total_bateria_ano
+print('Energia anual entregue pela bateria (kWh):', energia_total_bateria_ano)
+print('Energia anual injetada na rede (kWh):', energia_sobra)
+
+# Gráfico diário de carga/descarga
+bat_charge = [energia_necessaria_bateria if i%24==18 else 0 for i in range(24)]
+bat_discharge = [energia_carga_dia if i%24==23 else 0 for i in range(24)]
+plt.plot(bat_charge, label='Carga')
+plt.plot(bat_discharge, label='Descarga')
+plt.title('Carga/Descarga diária da bateria')
+plt.xlabel('Hora')
+plt.ylabel('kWh')
+plt.legend()
+plt.show()
